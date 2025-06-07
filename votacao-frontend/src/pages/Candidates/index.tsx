@@ -2,6 +2,8 @@ import { useState, useEffect } from "react";
 import Header from "@/components/Header";
 import { Button } from "@/components/ui/button";
 import { useCandidates } from "@/hooks/blockchain/useCandidates";
+import { useVote } from "@/hooks/blockchain/useVote";
+import { useAuth, maskCpf, cleanCpf } from "@/hooks/auth/useAuth";
 
 // Interface para candidatos da API
 interface ApiCandidate {
@@ -19,10 +21,19 @@ interface Candidate extends ApiCandidate {
 
 export function Candidates() {
   const [selectedCandidate, setSelectedCandidate] = useState<Candidate | null>(null);
-  const [hasVoted, setHasVoted] = useState(false);
   
-  // Buscar candidatos da API
+  // Hooks
   const { data: apiCandidates, isLoading, error, refetch } = useCandidates();
+  const { mutate: vote, isPending: isVoting, isSuccess: voteSuccess } = useVote();
+  const { user, isAuthenticated } = useAuth();
+
+  // Verificar autenticação
+  useEffect(() => {
+    if (!isAuthenticated) {
+      console.log('⚠️ Usuário não autenticado, redirecionando...');
+      window.location.href = '/login';
+    }
+  }, [isAuthenticated]);
 
   // Log quando os candidatos forem carregados
   useEffect(() => {
@@ -56,20 +67,30 @@ export function Candidates() {
       return;
     }
 
-    // Aqui você faria a chamada para a API de votação
-    console.log("Votando no candidato:", selectedCandidate);
-    setHasVoted(true);
+    if (!user?.cpf) {
+      alert("Erro: CPF do usuário não encontrado. Faça login novamente.");
+      return;
+    }
 
-    // Simular processamento
-    setTimeout(() => {
-      alert(`Voto computado com sucesso para ${selectedCandidate.name}!`);
-    }, 1000);
+    console.log("Enviando voto:", { 
+      cpf: user.cpf, 
+      candidateId: selectedCandidate.id,
+      candidateName: selectedCandidate.name 
+    });
+    
+    // Enviar voto real para a API (CPF já limpo)
+    vote({ cpf: cleanCpf(user.cpf), candidateId: selectedCandidate.id });
   };
 
   const handleSelectCandidate = (candidate: Candidate) => {
-    if (hasVoted) return;
+    if (voteSuccess || isVoting) return;
     setSelectedCandidate(candidate);
   };
+
+  // Se não estiver autenticado, não renderizar nada
+  if (!isAuthenticated) {
+    return null;
+  }
 
   // Loading state
   if (isLoading) {
@@ -137,27 +158,16 @@ export function Candidates() {
   }
 
   // Success vote state
-  if (hasVoted) {
+  if (voteSuccess) {
     return (
       <div className="min-h-screen bg-gray-50">
         <Header />
-
         <div className="container mx-auto px-4 py-16">
           <div className="max-w-2xl mx-auto text-center">
             <div className="bg-white rounded-lg shadow-lg p-8">
               <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
-                <svg
-                  className="w-10 h-10 text-green-600"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M5 13l4 4L19 7"
-                  />
+                <svg className="w-10 h-10 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                 </svg>
               </div>
 
@@ -165,8 +175,7 @@ export function Candidates() {
                 Voto Confirmado!
               </h2>
               <p className="text-lg text-gray-600 mb-6">
-                Seu voto foi registrado com sucesso na blockchain e não pode ser
-                alterado.
+                Seu voto foi registrado com sucesso na blockchain e não pode ser alterado.
               </p>
 
               <div className="bg-gray-50 rounded-lg p-6 mb-6">
@@ -195,33 +204,30 @@ export function Candidates() {
                     <p className="text-gray-600">
                       <strong>Candidato:</strong> {selectedCandidate?.name}<br/>
                       <strong>ID:</strong> {selectedCandidate?.id}<br/>
+                      <strong>Eleitor:</strong> {user?.cpf ? maskCpf(user.cpf) : 'N/A'}<br/>
                       <strong>Data/Hora:</strong> {new Date().toLocaleString("pt-BR")}
                     </p>
                   </div>
                 </div>
               </div>
 
-              <div className="p-4 bg-blue-50 rounded-lg">
+              <div className="p-4 bg-blue-50 rounded-lg mb-6">
                 <div className="flex items-center">
-                  <svg
-                    className="w-5 h-5 text-blue-500 mr-2"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                    />
+                  <svg className="w-5 h-5 text-blue-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
                   <span className="text-sm text-blue-700">
-                    Seu voto foi criptografado e registrado permanentemente na
-                    blockchain
+                    Seu voto foi criptografado e registrado permanentemente na blockchain
                   </span>
                 </div>
               </div>
+
+              <Button 
+                onClick={() => window.location.href = '/results'} 
+                className="bg-gray-900 hover:bg-black text-white"
+              >
+                Ver Resultados da Eleição
+              </Button>
             </div>
           </div>
         </div>
@@ -243,13 +249,26 @@ export function Candidates() {
             Escolha seu candidato para prefeito. Seu voto será registrado de
             forma segura e transparente na blockchain.
           </p>
+          
+          {/* Info do eleitor */}
+          {user?.cpf && (
+            <div className="mt-4 inline-flex items-center px-4 py-2 bg-blue-50 rounded-lg">
+              <svg className="w-4 h-4 text-blue-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+              </svg>
+              <span className="text-sm text-blue-700">
+                Eleitor: {maskCpf(user.cpf)}
+                {user.name && ` • ${user.name}`}
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Status da votação */}
         <div className="bg-white rounded-lg shadow-sm p-6 mb-8">
           <div className="flex items-center justify-between">
             <div className="flex items-center">
-              <div className="w-3 h-3 bg-green-500 rounded-full mr-3"></div>
+              <div className="w-3 h-3 bg-green-500 rounded-full mr-3 animate-pulse"></div>
               <span className="text-sm font-medium text-gray-900">
                 Votação Ativa
               </span>
@@ -268,9 +287,9 @@ export function Candidates() {
               onClick={() => handleSelectCandidate(candidate)}
               className={`bg-white rounded-lg shadow-sm border-2 transition-all cursor-pointer hover:shadow-md ${
                 selectedCandidate?.id === candidate.id
-                  ? "border-gray-900 ring-2 ring-gray-200"
+                  ? "border-green-500 ring-2 ring-green-200 bg-green-50"
                   : "border-gray-200 hover:border-gray-300"
-              }`}
+              } ${(voteSuccess || isVoting) ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
               <div className="p-6">
                 {/* Foto do candidato */}
@@ -325,19 +344,9 @@ export function Candidates() {
                 {/* Indicador de seleção */}
                 {selectedCandidate?.id === candidate.id && (
                   <div className="mt-4 flex items-center justify-center">
-                    <div className="flex items-center text-gray-900 text-sm font-medium">
-                      <svg
-                        className="w-4 h-4 mr-1"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M5 13l4 4L19 7"
-                        />
+                    <div className="flex items-center text-green-600 text-sm font-medium">
+                      <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                       </svg>
                       Selecionado
                     </div>
@@ -349,8 +358,8 @@ export function Candidates() {
         </div>
 
         {/* Painel de confirmação */}
-        {selectedCandidate && (
-          <div className="bg-white rounded-lg shadow-lg p-6">
+        {selectedCandidate && !voteSuccess && (
+          <div className="bg-white rounded-lg shadow-lg p-6 border-l-4 border-green-500">
             <div className="flex items-center justify-between">
               <div className="flex items-center">
                 <img 
@@ -366,18 +375,8 @@ export function Candidates() {
                   }}
                 />
                 <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mr-4" style={{display: 'none'}}>
-                  <svg
-                    className="w-6 h-6 text-gray-600"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
-                    />
+                  <svg className="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                   </svg>
                 </div>
                 <div>
@@ -387,22 +386,36 @@ export function Candidates() {
                   <p className="text-sm text-gray-600">
                     ID do Candidato: {selectedCandidate.id}
                   </p>
+                  {user?.cpf && (
+                    <p className="text-xs text-gray-500">
+                      Eleitor: {maskCpf(user.cpf)}
+                    </p>
+                  )}
                 </div>
               </div>
 
               <div className="flex space-x-3">
                 <Button
-                  variant="ghost"
+                  variant="outline"
                   onClick={() => setSelectedCandidate(null)}
+                  disabled={isVoting}
                   className="hover:bg-gray-100"
                 >
                   Cancelar
                 </Button>
                 <Button
                   onClick={handleVote}
-                  className="bg-gray-900 hover:bg-black text-white px-8"
+                  disabled={isVoting || !user?.cpf}
+                  className="bg-green-600 hover:bg-green-700 text-white px-8"
                 >
-                  Confirmar Voto
+                  {isVoting ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
+                      Registrando voto...
+                    </>
+                  ) : (
+                    '🗳️ Confirmar Voto'
+                  )}
                 </Button>
               </div>
             </div>
@@ -418,7 +431,7 @@ export function Candidates() {
             <div className="text-sm text-blue-700">
               <p className="font-medium mb-1">Seu voto é seguro e anônimo</p>
               <ul className="space-y-1 text-xs">
-                <li>• Criptografia de ponta a ponta</li>
+                <li>• Cada CPF pode votar apenas uma vez</li>
                 <li>• Registro imutável na blockchain</li>
                 <li>• Verificação transparente dos resultados</li>
                 <li>• Impossível rastrear voto até o eleitor</li>

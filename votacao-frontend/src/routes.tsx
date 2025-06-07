@@ -5,6 +5,7 @@ import { Register } from './pages/Register'
 import { Candidates } from './pages/Candidates'
 
 import { PrivateRoute } from './components/PrivateRoute/index'
+import { Results } from './pages/Results'
 
 export const router = createBrowserRouter([
   {
@@ -25,6 +26,10 @@ export const router = createBrowserRouter([
       {
         path: '/candidates',
         element: <Candidates />
+      },
+      {
+        path: '/results',
+        element: <Results />
       }
     ]
   },
